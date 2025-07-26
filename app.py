@@ -13,8 +13,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 app = Flask(__name__)
 PORT = int(os.environ.get("PORT", 8080))
 
-# --- CCXT Exchange Instance ---
-exchange = ccxt.binance({'options': {'defaultType': 'spot'}})
+# --- CCXT Exchange Instance (THE GRANDMASTER PIVOT!) ---
+# Pinalitan natin si Binance ng isang mas "friendly" na exchange na walang location restrictions.
+exchange = ccxt.kucoin()
 
 # --- ID Mapping (The Rosetta Stone) ---
 ID_MAPPING = {
@@ -49,7 +50,7 @@ def health():
 
 @app.route("/")
 def home():
-    return "<h1>Crypto Data Fortress is Online</h1><p>Use the /full-analysis endpoint to get data.</p>"
+    return "<h1>Crypto Data Fortress is Online</h1><p>Data source: KuCoin. Use /full-analysis to get data.</p>"
 
 # --- Main Analysis Endpoint ---
 @app.route('/full-analysis')
@@ -61,7 +62,7 @@ def get_full_analysis():
     for pair in CRYPTO_PAIRS:
         key = ID_MAPPING[pair]
         try:
-            logging.info(f"Processing pair: {pair} for key: {key}")
+            logging.info(f"Processing pair: {pair} from KuCoin")
             ohlcv = exchange.fetch_ohlcv(pair, timeframe='1d', limit=100)
             if not ohlcv:
                 raise ValueError(f"No OHLCV data returned for {pair}")
