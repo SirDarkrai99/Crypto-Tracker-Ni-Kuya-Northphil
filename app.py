@@ -1,13 +1,3 @@
-
----
-
-#### File 3: `app.py` (Ang Makina)
-
-Kinuha ko ang code mo at ni-refine ko pa para maging mas "bulletproof" sa Render. Nagdagdag ako ng mas magandang error handling at logging para kung may pumalya sa isang coin, tuloy pa rin ang iba.
-
-Palitan mo ang buong laman ng `app.py` mo nito:
-
-```python
 import os
 from flask import Flask, jsonify
 import ccxt
@@ -21,17 +11,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # --- Configuration ---
 app = Flask(__name__)
-# Itatakda ng Render ang PORT environment variable
 PORT = int(os.environ.get("PORT", 8080))
 
 # --- CCXT Exchange Instance ---
-# Gagamitin natin ang 'binanceusdm' para sa futures data na mas madalas may kumpletong data
-# Pwede ring 'binance' kung spot market ang prefer mo.
-exchange = ccxt.binance({
-    'options': {
-        'defaultType': 'spot',
-    },
-})
+exchange = ccxt.binance({'options': {'defaultType': 'spot'}})
 
 # --- ID Mapping (The Rosetta Stone) ---
 ID_MAPPING = {
@@ -91,7 +74,6 @@ def get_full_analysis():
             latest = df.iloc[-1]
             usd_price = latest['close']
             
-            # Data Validation
             if pd.isna(usd_price) or pd.isna(latest['RSI_14']):
                  raise ValueError(f"TA calculation resulted in NaN for {pair}")
 
@@ -114,6 +96,4 @@ def get_full_analysis():
 
 # --- Run The Server ---
 if __name__ == '__main__':
-    # Gunicorn will be used in production via the Procfile.
-    # This app.run() is for local development if you ever need it.
     app.run(host='0.0.0.0', port=PORT)
