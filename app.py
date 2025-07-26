@@ -1,86 +1,119 @@
+
+---
+
+#### File 3: `app.py` (Ang Makina)
+
+Kinuha ko ang code mo at ni-refine ko pa para maging mas "bulletproof" sa Render. Nagdagdag ako ng mas magandang error handling at logging para kung may pumalya sa isang coin, tuloy pa rin ang iba.
+
+Palitan mo ang buong laman ng `app.py` mo nito:
+
+```python
 import os
 from flask import Flask, jsonify
 import ccxt
 import pandas as pd
 import pandas_ta as ta
 import requests
+import logging
+
+# --- Basic Logging Setup ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Configuration ---
 app = Flask(__name__)
-binance = ccxt.binance()
-
-# Environment-aware port
+# Itatakda ng Render ang PORT environment variable
 PORT = int(os.environ.get("PORT", 8080))
 
-# ID mapping (Rosetta Stone)
+# --- CCXT Exchange Instance ---
+# Gagamitin natin ang 'binanceusdm' para sa futures data na mas madalas may kumpletong data
+# Pwede ring 'binance' kung spot market ang prefer mo.
+exchange = ccxt.binance({
+    'options': {
+        'defaultType': 'spot',
+    },
+})
+
+# --- ID Mapping (The Rosetta Stone) ---
 ID_MAPPING = {
-    'BTC/USDT': 'bitcoin',
-    'ETH/USDT': 'ethereum',
-    # ... rest of mapping ...
-    'RON/USDT': 'ronin'
+    'BTC/USDT': 'bitcoin', 'ETH/USDT': 'ethereum', 'BNB/USDT': 'binancecoin',
+    'SOL/USDT': 'solana', 'XRP/USDT': 'ripple', 'ADA/USDT': 'cardano',
+    'DOGE/USDT': 'dogecoin', 'AVAX/USDT': 'avalanche-2', 'DOT/USDT': 'polkadot',
+    'LINK/USDT': 'chainlink', 'MATIC/USDT': 'matic-network', 'UNI/USDT': 'uniswap',
+    'LTC/USDT': 'litecoin', 'XMR/USDT': 'monero', 'XLM/USDT': 'stellar',
+    'ATOM/USDT': 'cosmos', 'AXS/USDT': 'axie-infinity', 'SAND/USDT': 'the-sandbox',
+    'MANA/USDT': 'decentraland', 'SLP/USDT': 'smooth-love-potion',
+    'GALA/USDT': 'gala', 'RON/USDT': 'ronin'
 }
 CRYPTO_PAIRS = list(ID_MAPPING.keys())
 
-# Helper: fetch PHP rate
+# --- Helper Function: Fetch PHP Rate ---
 def get_php_rate():
     try:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=php"
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
-        return response.json()['tether']['php']
-    except Exception:
-        return 58.0
+        rate = response.json()['tether']['php']
+        logging.info(f"Successfully fetched PHP rate: {rate}")
+        return rate
+    except Exception as e:
+        logging.error(f"Could not fetch PHP rate: {e}. Defaulting to 58.5")
+        return 58.5
 
-# Health check endpoint
+# --- Health Check and Homepage Routes ---
 @app.route("/health")
 def health():
     return "OK", 200
 
-# Homepage
 @app.route("/")
 def home():
-    return (
-        "<h1>Crypto Data Fortress v3.0 (Precision Strike)</h1>"
-        "<p>Endpoints: <a href=\"/full-analysis\">/full-analysis</a></p>"
-    )
+    return "<h1>Crypto Data Fortress is Online</h1><p>Use the /full-analysis endpoint to get data.</p>"
 
-# Main analysis endpoint
+# --- Main Analysis Endpoint ---
 @app.route('/full-analysis')
 def get_full_analysis():
+    logging.info("'/full-analysis' request received. Starting job.")
     php_rate = get_php_rate()
-    report = {}
+    final_report = {}
 
     for pair in CRYPTO_PAIRS:
         key = ID_MAPPING[pair]
         try:
-            ohlcv = binance.fetch_ohlcv(pair, timeframe='1d', limit=100)
-            df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
+            logging.info(f"Processing pair: {pair} for key: {key}")
+            ohlcv = exchange.fetch_ohlcv(pair, timeframe='1d', limit=100)
+            if not ohlcv:
+                raise ValueError(f"No OHLCV data returned for {pair}")
+
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df.ta.rsi(length=14, append=True)
             df.ta.macd(fast=12, slow=26, signal=9, append=True)
             df.ta.bbands(length=20, std=2, append=True)
 
             latest = df.iloc[-1]
-            usd = latest['close']
-            php = usd * php_rate
-            rsi = latest['RSI_14']
-            macd = latest['MACD_12_26_9']
-            signal = latest['MACDs_12_26_9']
-            bb_upper = latest['BBU_20_2.0']
-            bb_lower = latest['BBL_20_2.0']
+            usd_price = latest['close']
+            
+            # Data Validation
+            if pd.isna(usd_price) or pd.isna(latest['RSI_14']):
+                 raise ValueError(f"TA calculation resulted in NaN for {pair}")
 
-            report[key] = {
-                "live_prices": {"usd": usd, "php": php},
+            final_report[key] = {
+                "live_prices": {"usd": usd_price, "php": usd_price * php_rate},
                 "analysis": {
-                    "rsi_value": rsi,
-                    "rsi_signal": 'SELL' if rsi>70 else 'BUY' if rsi<30 else 'NEUTRAL',
-                    "macd_signal": 'BUY' if macd>signal else 'SELL',
-                    "bb_signal": 'SELL' if usd>bb_upper else 'BUY' if usd<bb_lower else 'NEUTRAL'
+                    "rsi_value": latest['RSI_14'],
+                    "rsi_signal": 'SELL' if latest['RSI_14'] > 70 else 'BUY' if latest['RSI_14'] < 30 else 'NEUTRAL',
+                    "macd_signal": 'BUY' if latest['MACD_12_26_9'] > latest['MACDs_12_26_9'] else 'SELL',
+                    "bb_value": {"upper": latest['BBU_20_2.0'], "lower": latest['BBL_20_2.0']},
+                    "bb_signal": 'SELL' if usd_price > latest['BBU_20_2.0'] else 'BUY' if usd_price < latest['BBL_20_2.0'] else 'NEUTRAL'
                 }
             }
         except Exception as e:
-            report[key] = {"error": str(e)}
+            logging.error(f"FAILED to process {pair}: {e}")
+            final_report[key] = {"live_prices": None, "analysis": {"error": str(e)}}
 
-    return jsonify(report)
+    logging.info("Analysis complete. Sending report.")
+    return jsonify(final_report)
 
+# --- Run The Server ---
 if __name__ == '__main__':
+    # Gunicorn will be used in production via the Procfile.
+    # This app.run() is for local development if you ever need it.
     app.run(host='0.0.0.0', port=PORT)
