@@ -1,8 +1,7 @@
 flask
+gunicorn
 ccxt
 pandas
-pandas_ta
+pandas-ta
 requests
-gunicorn
-numpy<1.25  # pin to avoid pandas_ta import errors with NaN
-setuptools<81  # suppress pkg_resources deprecation warning
+numpy==1.26.4
